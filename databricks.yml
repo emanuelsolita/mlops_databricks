@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=bundle_config_schema.json
+---
+bundle:
+  name: XGBoost-ML-Ops
+ 
+variables:
+  environment:
+    description: The environment the job is running in.
+  sql_warehouse_id:
+    description: The ID of the SQL warehouse to use in the ingestion job.
+  git_commit:
+    description: The short git commit hash of the current commit.
+  git_branch:
+    description: The branch associated with the current commit.
+  git_tag:
+    description: The tag associated with the current commit.
+  # autoloader_root:
+    # description: The root path of the storage used by autoloader.
+  service_principal:
+    description: Service Principal Name
+  cluster_policy_id:
+    description: The policy ID for the cluster.
+    lookup:
+      cluster_policy: "Job Compute"
+
+include:
+  - resources/integration-tests.yaml
+  - resources/release-pipeline.yaml
+  - resources/initial-training-test-data-ingestion.yaml
+  # - resources/ingestion-pipeline.yaml # not used because no data ingestion implemented yet
+ 
+permissions: 
+  - group_name: 
+    level: CAN_MANAGE
+  # - service_principal_name: 
+  #   level: CAN_MANAGE
+
+sync:
+  include:
+    # - artifacts/mlruns/.gitkeep
+    - dist/*.whl
+
+artifacts:
+  default:
+    type: whl
+    build: export PATH="$HOME/.local/bin:$PATH" && poetry lock && poetry build --format wheel # poetry lock takes time to update all the dependecies
+    path: .
+
+targets:
+  # The 'dev-local' target, used for development purposes.
+  # Whenever a developer deploys using 'dev-local', they get their own copy.
+  dev-local:
+    mode: development
+    # We use 'mode: development' to make sure everything deployed to this target gets a prefix
+    # like '[dev my_user_name]'. Setting this mode also disables any schedules and
+    # automatic triggers for jobs and enables the 'development' mode for Delta Live Tables pipelines.
+    default: true
+    variables:
+      environment: dev
+    workspace:
+      host: 
+
+  # The 'dev' target, used for integration tests.
+  dev:
+    mode: production
+    # For production deployments, we only have a single copy, so we override the
+    # workspace.root_path default of
+    # /Users/${workspace.current_user.userName}/.bundle/${bundle.target}/${bundle.name}
+    # to a path that is not specific to the current user.
+    default: false
+    workspace:
+      host: 
+      root_path: /${bundle.name}
+    variables:
+      environment: dev
+
+   # The 'prod' target, used for production deployment.
+  prod:
+    mode: production
+    default: false
+    workspace:
+      host: 
+      root_path: /${bundle.name}
+    variables:
+      environment: prod

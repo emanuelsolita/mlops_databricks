@@ -7,6 +7,10 @@ dbutils.library.restartPython()
 
 # COMMAND ----------
 
+import pandas as pd
+
+# COMMAND ----------
+
 import mlflow
 import mlflow.xgboost
 import pandas as pd
@@ -176,26 +180,37 @@ y_test.iloc[:4]
 
 # DBTITLE 1,Cell 18
 from mlflow.models import infer_signature
-pred_proba = {'proba': model.predict_proba(X_train)[:,1]}
-signature = infer_signature(X_train, 
-            pd.DataFrame(pred_proba))
+
 with mlflow.start_run(run_name="run-churn-emhol-xgb-challenger", tags={"Environment" :"dev"}):
 
     challenger = XGBClassifier(
-        n_estimators=300,
-        max_depth=6,
-        learning_rate=0.03,
+        n_estimators=250,
+        max_depth=4,
+        learning_rate=0.06,
         subsample=0.9,
         colsample_bytree=0.9,
         eval_metric="logloss",
-        random_state=99
+        random_state=67
     )
+    # XGBClassifier(
+    #     n_estimators=200,
+    #     max_depth=5,
+    #     learning_rate=0.05,
+    #     subsample=0.8,
+    #     colsample_bytree=0.8,
+    #     eval_metric="logloss",
+    #     random_state=42
+    # )
 
     challenger.fit(X_train, y_train)
     preds = challenger.predict_proba(X_test)[:, 1]
     auc = roc_auc_score(y_test, preds)
 
     mlflow.log_metric("roc_auc", auc)
+
+    pred_proba = {'proba': challenger.predict_proba(X_train)[:,1]}
+    signature = infer_signature(X_train, 
+                pd.DataFrame(pred_proba))
 
     model_info = mlflow.xgboost.log_model(
         challenger,
@@ -217,16 +232,37 @@ with mlflow.start_run(run_name="run-churn-emhol-xgb-challenger", tags={"Environm
 
 # COMMAND ----------
 
-champion_version = mlf_client.get_model_version_by_alias(
+# MAGIC %md
+# MAGIC ### New model trained (Challenger)
+# MAGIC
+# MAGIC Set the Champion model to v 3 (its a "worse" model)
+
+# COMMAND ----------
+
+client.set_registered_model_alias(
+    name=model_name,
+    alias="champion",
+    version=3
+)
+
+client.set_registered_model_alias(
+    name=model_name,
+    alias="challenger",
+    version=7
+)
+
+# COMMAND ----------
+
+champion_version = client.get_model_version_by_alias(
             model_name, "champion"
             ).run_id
 
-champion_auc = mlf_client.get_metric_history(champion_version, "roc_auc")[-1].value
+champion_auc = client.get_metric_history(champion_version, "roc_auc")[-1].value
 
-challenger_version = mlf_client.get_model_version_by_alias(
+challenger_version = client.get_model_version_by_alias(
             model_name, "challenger"
             ).run_id
-challenger_auc = mlf_client.get_metric_history(challenger_version, "roc_auc")[-1].value
+challenger_auc = client.get_metric_history(challenger_version, "roc_auc")[-1].value
 
 print(f"AUC for Challenger is {challenger_auc}")
 print(f"AUC for Champion is {champion_auc}")
@@ -234,11 +270,11 @@ if challenger_auc > champion_auc:
     
     print("Challenger is better than Champion")
 
-    #mlf_client = mlflow.MlflowClient()
-    model_version = mlf_client.get_model_version_by_alias(model_name, "challenger").version
-    mlf_client.set_registered_model_alias(model_name, "champion", model_version)
-    mlf_client.delete_registered_model_alias(model_name, "challenger")
-    new_version = mlf_client.get_model_version_by_alias(model_name, "champion").version
+    #client = mlflow.MlflowClient()
+    model_version = client.get_model_version_by_alias(model_name, "challenger").version
+    client.set_registered_model_alias(model_name, "champion", model_version)
+    client.delete_registered_model_alias(model_name, "challenger")
+    new_version = client.get_model_version_by_alias(model_name, "champion").version
 
     print(f"Challenger is promoted to Champion and version is now {new_version}") 
     
