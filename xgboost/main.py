@@ -2,7 +2,7 @@
 # MAGIC %pip install xgboost
 
 # COMMAND ----------
-
+# Running this cell to restart the Python process and ensure that the newly installed xgboost package is available for import in subsequent cells.
 dbutils.library.restartPython()
 
 # COMMAND ----------
